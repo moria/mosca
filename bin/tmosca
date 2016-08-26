@@ -1,0 +1,67 @@
+#! /usr/bin/env node
+
+var mosca = require('../');
+
+var pubsubSettings = {
+    type: 'redis'
+};
+
+var SECURE_KEY = __dirname + '/../test/secure/tls-key.pem';
+var SECURE_CERT = __dirname + '/../test/secure/tls-cert.pem';
+
+var moscaSetting = {
+    interfaces: [
+        { type: "mqtt", port: 1883 },
+        { type: "mqtts", port: 8883, credentials: { keyPath: SECURE_KEY, certPath: SECURE_CERT } },
+    ],
+    stats: false,
+
+    logger: { name: 'MoscaServer', level: 'debug'},
+
+    persistence: { factory: mosca.persistence.Redis, url: 'localhost:6379', ttl: { subscriptions: 1000 * 60 * 10, packets: 1000 * 60 * 10 } },
+
+    backend: pubsubSettings,
+};
+
+var Auth = require('../lib/authorizer_redis.js');
+var author = new Auth({host:'localhost', port:6379});
+
+var server = new mosca.Server(moscaSetting);
+
+server.on('ready', setup);
+
+function setup() {
+    server.authenticate = author.authenticate;
+    server.authorizePublish = author.authorizePublish;
+    server.authorizeSubscribe = author.authorizeSubscribe;
+    
+    console.log('Mosca server is up and running.');
+}
+
+server.on("error", function (err) {
+    console.log(err);
+});
+
+server.on('clientConnected', function (client) {
+    console.log('Client Connected \t:= ', client.id);
+});
+
+server.on('published', function (packet, client) {
+    console.log("Published :=", packet);
+});
+
+server.on('subscribed', function (topic, client) {
+    console.log("Subscribed :=", client.packet);
+});
+
+server.on('unsubscribed', function (topic, client) {
+    console.log('unsubscribed := ', topic);
+});
+
+server.on('clientDisconnecting', function (client) {
+    console.log('clientDisconnecting := ', client.id);
+});
+
+server.on('clientDisconnected', function (client) {
+    console.log('Client Disconnected     := ', client.id);
+});
